@@ -50,3 +50,20 @@ export async function saveAssistantChat(userId:string, answer:string) {
         throw new Error("Could not save chat from assistant!!" + JSON.stringify(error.message))
       }
 }
+export async function getRecentChatForUser(userId: string) {
+  const { data, error } = await supabase
+    .from("chats")
+    .select("id, user_id, role, content, created_at")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(4)
+
+  if (error) {
+    console.error("Error fetching recent messages:", error)
+    return { data: null, error }
+  }
+
+  // Reverse (oldest first)
+  const messages = data?.reverse() || []
+  return { data: messages, error: null }
+}

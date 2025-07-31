@@ -1,136 +1,66 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { ChatHeader } from "./chat/ChatHeader"
 import { ChatMessages } from "./chat/ChatMessages"
 import { ChatInput } from "./chat/ChatInput"
 import { sendMessage } from "@/lib/chatService"
 import type { Message } from "@/types/chat"
-import supabase from "@/db/supabase"
+import useAuth from "./hooks/useAuth"
+import useChatMessages from "./hooks/useChatMessages"
+
+// Utility functions
+const generateMessageId = () => Date.now().toString()
+
+const createMessage = (
+  role: Message["role"],
+  content: string,
+  id?: string
+): Message => ({
+  id: id || generateMessageId(),
+  role,
+  content,
+  timestamp: new Date(),
+})
 
 export default function EcommerceChatbot() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "1",
-      role: "assistant",
-      content: "Hello! I'm your AI shopping assistant. How can I help you find the perfect product today?",
-      timestamp: new Date(),
-    },
-  ])
+  const { userId, isInitialized } = useAuth()
+  const { messages, addMessage, addMessages } = useChatMessages(userId, isInitialized)
   const [isLoading, setIsLoading] = useState(false)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
-  const [userId, setUserId] = useState<string | null>(null)
 
-
-  const scrollToBottom = () => {
+  const scrollToBottom = useCallback(() => {
     if (messagesContainerRef.current) {
       messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
     }
-  }
+  }, [])
 
   useEffect(() => {
     scrollToBottom()
-  }, [messages])
-
-  useEffect(() => {
-    const init = async () => {
-      // Check existing Supabase Auth session
-      const { data: UserData, error: sessionError } = await supabase.auth.getUser()
-      if (sessionError) {
-        console.error("Error getting UserData:", sessionError)
-      }
-
-      let user = UserData?.user?.id
-      console.log(user + "ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss");
-
-      if (!user) {
-        // No active session => sign in anonymously
-        const { data, error } = await supabase.auth.signInAnonymously()
-        if (error || !data) {
-          console.error("Anon sign‑in failed:", error)
-          return
-        }
-        user = data.user?.id
-
-      }
-    
-      if (user) {
-        setUserId(user)
-        //localStorage.setItem("session_id", user)
-
-        // Fetch past messages for this user
-        const { data: msgs, error: msgErr } = await supabase
-          .from("chats")
-          .select("user_id, role, content, created_at")
-          .eq("user_id", user)
-          .order("created_at", { ascending: true })
-
-        if (msgErr) {
-          console.error("Error loading messages:", msgErr)
-        } else if (msgs) {
-          const loaded = msgs.map((row) => ({
-            id: row.user_id.toString(),
-            role: row.role as Message["role"],
-            content: row.content,
-            timestamp: new Date(row.created_at),
-          }))
-          setMessages(loaded)
-        }
-      }
-    }
-     init()
-  }, [])
+  }, [messages, scrollToBottom])
 
   const handleSendMessage = async (content: string) => {
-        if (!userId) throw Error("User is not logged In")
-
-  
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: "user",
-      content,
-      timestamp: new Date(),
+    if (!userId) {
+      console.error("User is not authenticated")
+      return
     }
 
-    setMessages((prev) => [...prev, userMessage])
+    const userMessage = createMessage("user", content)
+    addMessage(userMessage)
     setIsLoading(true)
 
     try {
-      /*
-      await supabase.from("messages").insert({
-        user_id: userId,
-        role: "user",
-        content,
-      })
-*/
-      const response = await sendMessage(content,userId)
-
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: response,
-        timestamp: new Date(),
-      }
-
-      // Insert assistant message
-      /*await supabase.from("messages").insert({
-        user_id: userId,
-        role: "assistant",
-        content: response,
-      })
-      */
-      setMessages((prev) => [...prev, assistantMessage])
+      const response = await sendMessage(content, userId)
+      const assistantMessage = createMessage("assistant", response)
+      addMessage(assistantMessage)
     } catch (error) {
-      console.error("Error:", error)
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: "Sorry, I encountered an error while processing your request. Please try again.",
-        timestamp: new Date(),
-      }
-
-      setMessages((prev) => [...prev, errorMessage])
+      console.error("Error sending message:", error)
+      const errorMessage = createMessage(
+        "assistant",
+        "Sorry, I encountered an error while processing your request. Please try again."
+      )
+      addMessage(errorMessage)
     } finally {
       setIsLoading(false)
     }
