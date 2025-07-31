@@ -1,67 +1,66 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { ChatHeader } from "./chat/ChatHeader"
 import { ChatMessages } from "./chat/ChatMessages"
 import { ChatInput } from "./chat/ChatInput"
 import { sendMessage } from "@/lib/chatService"
 import type { Message } from "@/types/chat"
+import useAuth from "./hooks/useAuth"
+import useChatMessages from "./hooks/useChatMessages"
+
+// Utility functions
+const generateMessageId = () => Date.now().toString()
+
+const createMessage = (
+  role: Message["role"],
+  content: string,
+  id?: string
+): Message => ({
+  id: id || generateMessageId(),
+  role,
+  content,
+  timestamp: new Date(),
+})
 
 export default function EcommerceChatbot() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "1",
-      role: "assistant",
-      content: "Hello! I'm your AI shopping assistant. How can I help you find the perfect product today?",
-      timestamp: new Date(),
-    },
-  ])
+  const { userId, isInitialized } = useAuth()
+  const { messages, addMessage, addMessages } = useChatMessages(userId, isInitialized)
   const [isLoading, setIsLoading] = useState(false)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
 
-  const scrollToBottom = () => {
+  const scrollToBottom = useCallback(() => {
     if (messagesContainerRef.current) {
       messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
     }
-  }
+  }, [])
 
   useEffect(() => {
     scrollToBottom()
-  }, [messages])
+  }, [messages, scrollToBottom])
 
   const handleSendMessage = async (content: string) => {
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: "user",
-      content,
-      timestamp: new Date(),
+    if (!userId) {
+      console.error("User is not authenticated")
+      return
     }
 
-    setMessages((prev) => [...prev, userMessage])
+    const userMessage = createMessage("user", content)
+    addMessage(userMessage)
     setIsLoading(true)
 
     try {
-      const response = await sendMessage(content)
-
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: response,
-        timestamp: new Date(),
-      }
-
-      setMessages((prev) => [...prev, assistantMessage])
+      const response = await sendMessage(content, userId)
+      const assistantMessage = createMessage("assistant", response)
+      addMessage(assistantMessage)
     } catch (error) {
-      console.error("Error:", error)
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: "Sorry, I encountered an error while processing your request. Please try again.",
-        timestamp: new Date(),
-      }
-
-      setMessages((prev) => [...prev, errorMessage])
+      console.error("Error sending message:", error)
+      const errorMessage = createMessage(
+        "assistant",
+        "Sorry, I encountered an error while processing your request. Please try again."
+      )
+      addMessage(errorMessage)
     } finally {
       setIsLoading(false)
     }

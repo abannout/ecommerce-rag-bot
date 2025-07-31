@@ -2,11 +2,12 @@ import supabase from "@/db/supabase";
 import embedQuery from "@/lib/embed";
 import { NextResponse } from "next/server";
 import generateAnswer from "../../../lib/generateAnswer";
+import { saveAssistantChat, saveUserChat } from "@/lib/chatService";
 
 
 export async function POST(req: Request) {
     try {
-        const { query } = await req.json();
+        const { query,userId } = await req.json();
         console.log("User query:", query);
 
         const embedding = await embedQuery(query);
@@ -23,12 +24,13 @@ export async function POST(req: Request) {
         } else {
             context = "No relevant product data available.";
         }
-
+        saveUserChat(userId, query, context)
         const answer = await generateAnswer(context, query);
-
+        
         if (!answer) {
             throw new Error("No answer returned from LLM.");
         }
+        saveAssistantChat(userId,answer)
         return NextResponse.json({ answer });
 
     } catch (e: any) {
