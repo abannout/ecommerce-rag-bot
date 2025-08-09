@@ -1,36 +1,59 @@
-import supabase from "@/db/supabase";
-import embedQuery from "@/lib/embed";
 import { NextResponse } from "next/server";
-import generateAnswer from "../../../lib/generateAnswer";
-import { saveAssistantChat, saveUserChat } from "@/lib/chatService";
+import generateAnswer from "../../../lib/chat/generateAnswer";
+import { getRecentChatForUser, saveAssistantChat, saveUserChat } from "@/lib/chat/chatService";
+import { performEnhancedSearch } from "@/lib/querySearch/enhancedSearch";
 
+interface ChatMessage {
+    role: 'user' | 'assistant';
+    content: string;
+    context?: string,
+    timestamp?: Date;
+}
 
 export async function POST(req: Request) {
     try {
-        const { query,userId } = await req.json();
+        const { query, userId } = await req.json();
         console.log("User query:", query);
 
-        const embedding = await embedQuery(query);
+        const matches = await performEnhancedSearch(query, 5);
+        console.log("Enhanced search results:", matches.length);
 
-        const { data: matches } = await supabase.rpc("match_product_chunks", {
-            query_embedding: embedding,
-            match_threshold: 0.8,
-            match_count: 5,
-        });
-        console.log(JSON.stringify(matches))
+        const { data: recentChats, error: chatError } = await getRecentChatForUser(userId);
+        let chatHistory: ChatMessage[] = [];
+        
+        if (recentChats && !chatError) {
+
+            chatHistory = recentChats.map((chat: any) => ({
+                role: chat.role as 'user' | 'assistant',
+                content: chat.content,
+                context:chat.context!,
+                timestamp: new Date(chat.created_at)
+            }));
+            console.log(`Loaded ${chatHistory.length} previous messages for context`);
+        } else if (chatError) {
+            console.warn("Could not load chat history:", chatError);
+        }
+        
         let context = "";
         if (matches && matches.length > 0) {
-            context = matches.map((m: any) => m.content).join("\n\n");
+            context = matches.map((m: any) => {
+                const genderInfo = m.extracted_attributes?.gender ? ` (Gender: ${m.extracted_attributes.gender})` : '';
+                const categoryInfo = m.extracted_attributes?.category ? ` (Category: ${m.extracted_attributes.category})` : '';
+                
+                return `Product: ${m.content}${genderInfo}${categoryInfo}`;
+            }).join("\n\n");
         } else {
             context = "No relevant product data available.";
         }
-        saveUserChat(userId, query, context)
-        const answer = await generateAnswer(context, query);
+
+        saveUserChat(userId, query, context);
+        const answer = await generateAnswer(context, query, chatHistory);
         
         if (!answer) {
             throw new Error("No answer returned from LLM.");
         }
-        saveAssistantChat(userId,answer)
+        
+        saveAssistantChat(userId, answer);
         return NextResponse.json({ answer });
 
     } catch (e: any) {
@@ -38,4 +61,3 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: e.message || "Internal error" }, { status: 500 });
     }
 }
-

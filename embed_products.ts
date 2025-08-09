@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
-import embedQuery from '@/lib/embed';
+import embedQuery from '@/lib/chat/embed';
 import supabase from '@/db/supabase';
 import csv from 'csv-parser';
 import { createReadStream } from 'fs';
