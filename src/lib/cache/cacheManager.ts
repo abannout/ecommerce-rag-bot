@@ -163,6 +163,7 @@ export class CacheManager {
 export const cacheManager = new CacheManager();
 
 // Auto-initialize in server environment only
+/*
 if (typeof window === 'undefined') { // Server-side only
     // Don't block module loading - initialize in background
     setTimeout(() => {
@@ -171,7 +172,7 @@ if (typeof window === 'undefined') { // Server-side only
         });
     }, 100);
 }
-
+*/
 // Export for manual control
 export {
     clearEmbeddingCache,
