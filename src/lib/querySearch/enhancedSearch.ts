@@ -19,11 +19,11 @@ export async function performEnhancedSearch(
   originalQuery: string,
   maxResults: number = 5
 ): Promise<SearchResult[]> {
-
+/*
      if (!cacheManager.isInitialized) {
     await cacheManager.initialize();
   }
-  
+  */
   const cacheKey = `${originalQuery}_${maxResults}`;
   if (searchCache.has(cacheKey)) {
     console.log("Returning cached search results");
